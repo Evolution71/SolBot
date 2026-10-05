@@ -1,0 +1,47 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="crystalFace1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9CFFC7"/>
+      <stop offset="100%" stop-color="#5B8CFF"/>
+    </linearGradient>
+    <linearGradient id="crystalFace2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7CFFB2"/>
+      <stop offset="100%" stop-color="#3F6FE0"/>
+    </linearGradient>
+    <linearGradient id="crystalFace3" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4FD98C"/>
+      <stop offset="100%" stop-color="#3057B8"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="60%">
+      <stop offset="0%" stop-color="#7CFFB2" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#7CFFB2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="200" height="200" rx="40" fill="#0B0E14"/>
+  <circle cx="100" cy="90" r="70" fill="url(#glow)"/>
+
+  <!-- targeting reticle -->
+  <circle cx="100" cy="100" r="82" fill="none" stroke="#7CFFB2" stroke-opacity="0.25" stroke-width="2"/>
+  <circle cx="100" cy="100" r="68" fill="none" stroke="#5B8CFF" stroke-opacity="0.3" stroke-width="1.5"/>
+  <g stroke="#7CFFB2" stroke-opacity="0.55" stroke-width="3" stroke-linecap="round">
+    <line x1="100" y1="12" x2="100" y2="28"/>
+    <line x1="100" y1="172" x2="100" y2="188"/>
+    <line x1="12" y1="100" x2="28" y2="100"/>
+    <line x1="172" y1="100" x2="188" y2="100"/>
+  </g>
+
+  <!-- faceted crystal -->
+  <g>
+    <polygon points="100,40 132,78 100,180 68,78" fill="url(#crystalFace3)"/>
+    <polygon points="100,40 132,78 100,96" fill="url(#crystalFace1)"/>
+    <polygon points="100,40 68,78 100,96" fill="url(#crystalFace2)"/>
+    <polygon points="68,78 100,96 100,180" fill="#2A4C9E"/>
+    <polygon points="132,78 100,96 100,180" fill="#1F3A7A"/>
+    <polygon points="100,40 132,78 100,96 68,78" fill="none" stroke="#0B0E14" stroke-width="1.5" stroke-linejoin="round"/>
+    <polygon points="68,78 100,96 100,180" fill="none" stroke="#0B0E14" stroke-width="1.5" stroke-linejoin="round"/>
+    <polygon points="132,78 100,96 100,180" fill="none" stroke="#0B0E14" stroke-width="1.5" stroke-linejoin="round"/>
+    <polygon points="90,58 100,40 110,58 100,70" fill="#FFFFFF" fill-opacity="0.55"/>
+  </g>
+</svg>
