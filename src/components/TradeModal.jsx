@@ -1,28 +1,63 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { age, api, pct, price, tone, usd, useAuth, usePoll, useToast } from "../lib.jsx";
-import { CopyBox, Field, Modal, Num, Score, TokenCell } from "./ui.jsx";
+import { CopyBox, ExitFields, Field, Modal, Num, Score, TokenCell, WalletPick, exitBody } from "./ui.jsx";
 
 const PRESETS = [0.05, 0.1, 0.5, 1];
+const INTERVALS = [[5, "5 min"], [15, "15 min"], [60, "1 hour"], [240, "4 hours"], [1440, "1 day"]];
+const MODES = [["market", "Market"], ["limit", "Limit"], ["dca", "DCA"]];
 
 export default function TradeModal({ mint, onClose, onDone }) {
   const { user } = useAuth();
   const toast = useToast();
   const { data, error } = usePoll(`/api/market/token/${mint}`, 6000);
-  const [amount, setAmount] = useState(0.1);
-  const [slippage, setSlippage] = useState(15);
-  const [tp, setTp] = useState(null);
-  const [sl, setSl] = useState(null);
-  const [trail, setTrail] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const { data: wallets } = usePoll("/api/wallet");
   const L = user.limits;
 
-  const buy = async () => {
+  const [mode, setMode] = useState("market");
+  const [walletId, setWalletId] = useState(null);
+  const [amount, setAmount] = useState(0.1);
+  const [slippage, setSlippage] = useState(15);
+  const [rules, setRules] = useState({ tp_levels: [], sl_pct: null, trailing_pct: null, rug_exit_pct: null });
+  const [target, setTarget] = useState(null);       // limit: buy at or below; dca: optional ceiling
+  const [ladder, setLadder] = useState(1);
+  const [step, setStep] = useState(10);
+  const [expires, setExpires] = useState(24);
+  const [count, setCount] = useState(5);
+  const [interval, setInterval_] = useState(60);
+  const [busy, setBusy] = useState(false);
+
+  const t = data?.token;
+  useEffect(() => {
+    if (wallets && walletId == null) setWalletId(wallets.wallets.find((w) => w.is_default)?.id ?? wallets.wallets[0]?.id);
+  }, [wallets, walletId]);
+  useEffect(() => {
+    if (t && target == null && mode === "limit") setTarget(Number((t.price_usd * 0.9).toPrecision(4)));
+  }, [t, mode, target]);
+
+  const ordersOk = L.orders > 0;
+  const blocked = mode !== "market" && !ordersOk;
+  const total = mode === "dca" ? (amount || 0) * (count || 0) : mode === "limit" ? (amount || 0) * (ladder || 1) : amount || 0;
+  const fee = total * user.fee_bps / 10000;
+
+  const submit = async () => {
     setBusy(true);
     try {
-      const t = await api("/api/trade/buy", { method: "POST", body: {
-        mint, sol: amount, slippage_bps: Math.round(slippage * 100),
-        tp_pct: L.tp_sl ? tp : null, sl_pct: L.tp_sl ? sl : null, trailing_pct: L.trailing ? trail : null } });
-      toast(`Bought ${t.symbol} for ${t.sol} SOL`);
+      const common = { mint, wallet_id: walletId, slippage_bps: Math.round(slippage * 100), ...exitBody(rules, L) };
+      if (mode === "market") {
+        const r = await api("/api/trade/buy", { method: "POST", body: { ...common, sol: amount } });
+        toast(`Bought ${r.symbol} for ${r.sol} SOL`);
+      } else if (mode === "limit") {
+        const r = await api("/api/orders", { method: "POST", body: {
+          ...common, kind: "limit", sol_per_order: amount, trigger_price_usd: target,
+          ladder_levels: ladder || 1, ladder_step_pct: step || 10, expires_hours: expires || null } });
+        toast(`${r.orders.length} limit order${r.orders.length > 1 ? "s" : ""} placed for ${t.symbol}`);
+      } else {
+        await api("/api/orders", { method: "POST", body: {
+          ...common, kind: "dca", sol_per_order: amount, total_orders: count, interval_minutes: interval,
+          trigger_price_usd: target || null } });
+        toast(`DCA started: ${count} buys of ${amount} SOL`);
+      }
       onDone?.();
       onClose();
     } catch (e) {
@@ -32,8 +67,6 @@ export default function TradeModal({ mint, onClose, onDone }) {
     }
   };
 
-  const t = data?.token;
-  const fee = (amount || 0) * user.fee_bps / 10000;
   return (
     <Modal onClose={onClose} wide>
       <div className="panel-head">
@@ -69,23 +102,59 @@ export default function TradeModal({ mint, onClose, onDone }) {
           </div>
 
           <div className="stack">
-            <Field label="Amount (SOL)">
+            <div className="tabs block">
+              {MODES.map(([id, label]) => <button key={id} className={mode === id ? "on" : ""} onClick={() => setMode(id)}>{label}</button>)}
+            </div>
+            {blocked && (
+              <div className="lock-card" style={{ marginBottom: 0 }}>
+                <div><b>Limit orders and DCA are on Hunter and above.</b>
+                  <div className="mute small">{user.trial_available ? `Try them free for ${user.trial_days} days.` : "Upgrade to unlock them."}</div></div>
+                <Link to="/app/plans" className="btn primary sm" onClick={onClose}>{user.trial_available ? "Start free trial" : "View plans"}</Link>
+              </div>
+            )}
+            <WalletPick wallets={wallets?.wallets} value={walletId} onChange={setWalletId} label="Buy with wallet" />
+            <Field label={mode === "market" ? "Amount (SOL)" : "Amount per order (SOL)"}>
               <Num value={amount} onChange={setAmount} min="0.001" step="0.01" />
             </Field>
             <div className="row wrap">
               {PRESETS.map((p) => <button key={p} className={`btn sm ${amount === p ? "primary" : ""}`} onClick={() => setAmount(p)}>{p} SOL</button>)}
             </div>
+
+            {mode === "limit" && (
+              <>
+                <Field label="Buy when price is at or below (USD)"><Num value={target} onChange={setTarget} step="any" /></Field>
+                <div className="row wrap">
+                  {[5, 10, 25, 50].map((d) => <button key={d} className="btn sm" onClick={() => setTarget(Number((t.price_usd * (1 - d / 100)).toPrecision(4)))}>-{d}%</button>)}
+                </div>
+                <div className="grid g3">
+                  <Field label="Ladder orders"><Num value={ladder} onChange={setLadder} min="1" max="10" step="1" /></Field>
+                  <Field label="Step down %"><Num value={step} onChange={setStep} min="1" max="80" disabled={(ladder || 1) < 2} /></Field>
+                  <Field label="Expires (hours)"><Num value={expires} onChange={setExpires} min="1" placeholder="never" /></Field>
+                </div>
+              </>
+            )}
+            {mode === "dca" && (
+              <>
+                <div className="grid g2">
+                  <Field label="Number of buys"><Num value={count} onChange={setCount} min="1" max="100" step="1" /></Field>
+                  <Field label="Every">
+                    <select className="input" value={interval} onChange={(e) => setInterval_(Number(e.target.value))}>
+                      {INTERVALS.map(([m, label]) => <option key={m} value={m}>{label}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Only buy at or below (USD)" hint="optional"><Num value={target} onChange={setTarget} step="any" placeholder="any price" /></Field>
+              </>
+            )}
+
             <Field label="Max slippage %"><Num value={slippage} onChange={setSlippage} min="0.1" max="50" step="0.5" /></Field>
-            <div className="grid g2">
-              <Field label="Take-profit %" hint={L.tp_sl ? null : "Hunter+"}><Num value={tp} onChange={setTp} disabled={!L.tp_sl} placeholder="e.g. 50" /></Field>
-              <Field label="Stop-loss %" hint={L.tp_sl ? null : "Hunter+"}><Num value={sl} onChange={setSl} disabled={!L.tp_sl} placeholder="e.g. 25" /></Field>
-            </div>
-            <Field label="Trailing stop %" hint={L.trailing ? null : "Apex+"}><Num value={trail} onChange={setTrail} disabled={!L.trailing} placeholder="e.g. 20" /></Field>
+            <ExitFields value={rules} onChange={setRules} limits={L} />
             <div className="row between small mute">
-              <span>Platform fee ({(user.fee_bps / 100).toFixed(2)}%)</span><span className="mono">{fee.toFixed(5)} SOL</span>
+              <span>{mode === "market" ? "Platform fee" : `Total ${total.toFixed(3)} SOL, fee`} ({(user.fee_bps / 100).toFixed(2)}%)</span>
+              <span className="mono">{fee.toFixed(5)} SOL</span>
             </div>
-            <button className="btn primary lg block" disabled={busy || !amount} onClick={buy}>
-              {busy ? "Sending..." : `Buy ${t.symbol}`}
+            <button className="btn primary lg block" disabled={busy || !amount || blocked || (mode === "limit" && !target)} onClick={submit}>
+              {busy ? "Sending..." : mode === "market" ? `Buy ${t.symbol}` : mode === "limit" ? `Place limit order${(ladder || 1) > 1 ? "s" : ""}` : "Start DCA"}
             </button>
             <p className="small dim">New tokens are extremely risky and most go to zero. A safety score lowers risk, it does not remove it.</p>
           </div>

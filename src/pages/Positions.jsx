@@ -1,27 +1,25 @@
 import { useState } from "react";
 import { api, pct, signed, sol, tone, useAuth, usePoll, useToast, when } from "../lib.jsx";
 import ShareCard from "../components/ShareCard.jsx";
-import { Field, Icon, Modal, Num, TokenCell, solscan } from "../components/ui.jsx";
+import { ExitChips, ExitFields, Icon, Modal, TokenCell, exitBody, exitFrom, solscan } from "../components/ui.jsx";
 
 function Targets({ p, onClose, onSaved }) {
   const { user } = useAuth();
   const toast = useToast();
-  const [v, setV] = useState({ tp_pct: p.tp_pct, sl_pct: p.sl_pct, trailing_pct: p.trailing_pct });
+  const [rules, setRules] = useState(exitFrom(p));
   const save = async () => {
     try {
-      await api(`/api/trade/positions/${p.id}`, { method: "PATCH", body: v });
-      toast("Exit targets updated");
+      await api(`/api/trade/positions/${p.id}`, { method: "PATCH", body: exitBody(rules, user.limits) });
+      toast("Exit rules updated");
       onSaved();
       onClose();
     } catch (e) { toast(e.message, "error"); }
   };
   return (
     <Modal onClose={onClose}>
-      <div className="panel-head"><h3>Exit targets for {p.symbol}</h3><button className="btn sm ghost" onClick={onClose}>Close</button></div>
+      <div className="panel-head"><h3>Exit rules for {p.symbol}</h3><button className="btn sm ghost" onClick={onClose}>Close</button></div>
       <div className="panel-body stack">
-        <Field label="Take-profit %"><Num value={v.tp_pct} onChange={(x) => setV({ ...v, tp_pct: x })} placeholder="off" /></Field>
-        <Field label="Stop-loss %"><Num value={v.sl_pct} onChange={(x) => setV({ ...v, sl_pct: x })} placeholder="off" /></Field>
-        <Field label="Trailing stop %" hint={user.limits.trailing ? null : "Apex+"}><Num value={v.trailing_pct} onChange={(x) => setV({ ...v, trailing_pct: x })} placeholder="off" disabled={!user.limits.trailing} /></Field>
+        <ExitFields value={rules} onChange={setRules} limits={user.limits} />
         <button className="btn primary block" onClick={save}>Save</button>
       </div>
     </Modal>
@@ -37,6 +35,8 @@ export default function Positions() {
   const [busy, setBusy] = useState(null);
   const [edit, setEdit] = useState(null);
   const [share, setShare] = useState(null);
+  const rows = open.data?.positions || [];
+  const multi = new Set(rows.map((p) => p.wallet)).size > 1 || rows.some((p) => p.wallet !== "Main");
 
   const sell = async (p, part) => {
     setBusy(p.id);
@@ -58,21 +58,20 @@ export default function Positions() {
       </div>
 
       <div className="panel"><div className="table-wrap">
-        {tab === "open" && (open.data?.positions?.length ? (
+        {tab === "open" && (rows.length ? (
           <table>
-            <thead><tr><th>Token</th><th className="right">Cost</th><th className="right">Value</th><th className="right">P&amp;L</th><th>Targets</th><th className="right">Sell</th></tr></thead>
+            <thead><tr><th>Token</th>{multi && <th>Wallet</th>}<th className="right">Cost</th><th className="right">Value</th><th className="right">P&amp;L</th><th>Exit rules</th><th className="right">Sell</th></tr></thead>
             <tbody>
-              {open.data.positions.map((p) => (
+              {rows.map((p) => (
                 <tr key={p.id}>
                   <td><TokenCell t={p} /></td>
+                  {multi && <td className="small">{p.wallet}</td>}
                   <td className="right mono">{sol(p.cost_sol)}</td>
                   <td className="right mono">{sol(p.value_sol)}</td>
                   <td className={`right mono ${tone(p.pnl_sol)}`}>{signed(p.pnl_sol)}<div className="small">{pct(p.pnl_pct)}</div></td>
                   <td>
-                    <div className="row">
-                      {p.tp_pct && <span className="chip acc">TP +{p.tp_pct}%</span>}
-                      {p.sl_pct && <span className="chip red">SL -{p.sl_pct}%</span>}
-                      {p.trailing_pct && <span className="chip amber">TRAIL {p.trailing_pct}%</span>}
+                    <div className="row wrap" style={{ gap: 4, maxWidth: 300 }}>
+                      <ExitChips p={p} />
                       {user.limits.tp_sl && <button className="btn sm ghost" onClick={() => setEdit(p)}>Edit</button>}
                     </div>
                   </td>

@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Discover from "./pages/Discover.jsx";
 import Landing from "./pages/Landing.jsx";
 import Leaderboard from "./pages/Leaderboard.jsx";
+import Orders from "./pages/Orders.jsx";
 import Plans from "./pages/Plans.jsx";
 import Positions from "./pages/Positions.jsx";
 import Referrals from "./pages/Referrals.jsx";
@@ -34,6 +35,7 @@ function App() {
         <Route path="discover" element={<Discover />} />
         <Route path="sniper" element={<Sniper />} />
         <Route path="positions" element={<Positions />} />
+        <Route path="orders" element={<Orders />} />
         <Route path="copy" element={<Copy />} />
         <Route path="wallet" element={<Wallet />} />
         <Route path="plans" element={<Plans />} />

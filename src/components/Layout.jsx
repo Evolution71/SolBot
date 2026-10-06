@@ -5,8 +5,8 @@ import { Brand, Icon } from "./ui.jsx";
 
 const NAV = [
   ["Trade", [["/app", "Dashboard", "grid"], ["/app/discover", "Discover", "radar"], ["/app/sniper", "Auto-Sniper", "target"],
-             ["/app/positions", "Positions", "layers"], ["/app/copy", "Copy Trade", "users"]]],
-  ["Account", [["/app/wallet", "Wallet", "wallet"], ["/app/plans", "Plans", "bolt"], ["/app/referrals", "Referrals", "gift"],
+             ["/app/positions", "Positions", "layers"], ["/app/orders", "Orders", "orders"], ["/app/copy", "Copy Trade", "users"]]],
+  ["Account", [["/app/wallet", "Wallets", "wallet"], ["/app/plans", "Plans", "bolt"], ["/app/referrals", "Referrals", "gift"],
                ["/app/leaderboard", "Leaderboard", "trophy"]]],
 ];
 

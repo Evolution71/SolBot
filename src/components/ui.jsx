@@ -18,6 +18,12 @@ const paths = {
   out: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
   link: "M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1",
   share: "M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13",
+  orders: "M4 6h11M4 12h7M4 18h11M18 9l3 3-3 3",
+  plus: "M12 5v14M5 12h14",
+  close: "M6 6l12 12M18 6L6 18",
+  lock: "M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4",
+  key: "M15 7a4 4 0 1 1-3.9 5H8v3H5v3H2v-3l7.1-7.1A4 4 0 0 1 15 7zM16 8h.01",
+  route: "M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8 17h6a4 4 0 0 0 0-8h-4a4 4 0 0 1 0-8",
 };
 
 export function Icon({ name }) {
@@ -113,3 +119,84 @@ export function Score({ value }) {
 }
 
 export const solscan = (sig) => `https://solscan.io/tx/${sig}`;
+
+/* ---------- exit rules (take-profit levels, stop-loss, trailing stop, liquidity guard) ---------- */
+
+/* Read exit rules from a position, order or sniper config. A single legacy target becomes one level. */
+export function exitFrom(o = {}) {
+  const levels = (o.tp_levels || []).map((l) => ({ pct: l.pct, sell: l.sell }));
+  if (!levels.length && o.tp_pct) levels.push({ pct: o.tp_pct, sell: 100 });
+  return { tp_levels: levels, sl_pct: o.sl_pct ?? null, trailing_pct: o.trailing_pct ?? null, rug_exit_pct: o.rug_exit_pct ?? null };
+}
+
+/* Turn the form state into the API fields, dropping anything the plan does not include. */
+export function exitBody(rules, limits) {
+  const levels = (rules.tp_levels || []).filter((l) => l.pct > 0 && l.sell > 0);
+  return {
+    tp_pct: null,
+    tp_levels: limits.tp_sl && levels.length ? levels : null,
+    sl_pct: limits.tp_sl ? rules.sl_pct || null : null,
+    rug_exit_pct: limits.tp_sl ? rules.rug_exit_pct || null : null,
+    trailing_pct: limits.trailing ? rules.trailing_pct || null : null,
+  };
+}
+
+const LADDER = [{ pct: 50, sell: 33 }, { pct: 100, sell: 50 }, { pct: 200, sell: 100 }];
+
+export function ExitFields({ value, onChange, limits }) {
+  const levels = value.tp_levels || [];
+  const set = (patch) => onChange({ ...value, ...patch });
+  const setLevel = (i, patch) => set({ tp_levels: levels.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
+  const off = !limits.tp_sl;
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      <div className="row between">
+        <span className="small mute">Take-profit levels{off && <em className="dim" style={{ fontStyle: "normal" }}> - Hunter+</em>}</span>
+        <div className="row" style={{ gap: 6 }}>
+          <button type="button" className="btn sm ghost" disabled={off} onClick={() => set({ tp_levels: LADDER })}>3-step preset</button>
+          <button type="button" className="btn sm" disabled={off || levels.length >= 5} onClick={() => set({ tp_levels: [...levels, { pct: null, sell: 100 }] })}><Icon name="plus" />Add</button>
+        </div>
+      </div>
+      {levels.map((l, i) => (
+        <div className="level" key={i}>
+          <span className="mono small dim">{i + 1}</span>
+          <label><span>at gain %</span><Num value={l.pct} onChange={(v) => setLevel(i, { pct: v })} min="1" placeholder="50" disabled={off} /></label>
+          <label><span>sell % of remaining</span><Num value={l.sell} onChange={(v) => setLevel(i, { sell: v })} min="1" max="100" placeholder="100" disabled={off} /></label>
+          <button type="button" className="btn sm ghost" aria-label="Remove level" onClick={() => set({ tp_levels: levels.filter((_, j) => j !== i) })}><Icon name="close" /></button>
+        </div>
+      ))}
+      {!levels.length && <p className="small dim">No take-profit set. Add a level to sell automatically when the price rises.</p>}
+      <div className="grid g3">
+        <Field label="Stop-loss %" hint={off ? "Hunter+" : null}><Num value={value.sl_pct} onChange={(v) => set({ sl_pct: v })} placeholder="off" disabled={off} /></Field>
+        <Field label="Trailing stop %" hint={limits.trailing ? null : "Apex+"}><Num value={value.trailing_pct} onChange={(v) => set({ trailing_pct: v })} placeholder="off" disabled={!limits.trailing} /></Field>
+        <Field label="Liquidity guard %" hint={off ? "Hunter+" : null}><Num value={value.rug_exit_pct} onChange={(v) => set({ rug_exit_pct: v })} min="5" max="95" placeholder="off" disabled={off} /></Field>
+      </div>
+      <p className="small dim">Liquidity guard sells the whole position if the pool's liquidity falls by this much from when you bought. It reacts within a few seconds and cannot stop a pull that happens in one block.</p>
+    </div>
+  );
+}
+
+export function ExitChips({ p }) {
+  const levels = p.tp_levels || [];
+  return (
+    <>
+      {levels.map((l, i) => <span key={i} className={`chip ${l.hit ? "" : "acc"}`} style={l.hit ? { textDecoration: "line-through" } : null}>TP{levels.length > 1 ? i + 1 : ""} +{l.pct}%{l.sell < 100 ? ` / ${l.sell}%` : ""}</span>)}
+      {!levels.length && p.tp_pct && <span className="chip acc">TP +{p.tp_pct}%</span>}
+      {p.sl_pct && <span className="chip red">SL -{p.sl_pct}%</span>}
+      {p.trailing_pct && <span className="chip amber">TRAIL {p.trailing_pct}%</span>}
+      {p.rug_exit_pct && <span className="chip blue">GUARD {p.rug_exit_pct}%</span>}
+    </>
+  );
+}
+
+/* Wallet picker, shown only when the user has more than one wallet. */
+export function WalletPick({ wallets, value, onChange, label = "Wallet" }) {
+  if (!wallets || wallets.length < 2) return null;
+  return (
+    <Field label={label}>
+      <select className="input" value={value ?? ""} onChange={(e) => onChange(Number(e.target.value))}>
+        {wallets.map((w) => <option key={w.id} value={w.id}>{w.label} - {w.sol.toFixed(3)} SOL{w.is_default ? " (default)" : ""}</option>)}
+      </select>
+    </Field>
+  );
+}

@@ -43,6 +43,15 @@ export default function Plans() {
   const [busy, setBusy] = useState("");
   const current = data?.plans.find((p) => p.id === user.plan);
 
+  const startTrial = async () => {
+    setBusy("trial");
+    try {
+      const t = await api("/api/billing/trial", { method: "POST" });
+      await refresh();
+      toast(`${t.plan_name} trial started - ${user.trial_days} days, no payment needed`);
+    } catch (e) { toast(e.message, "error"); } finally { setBusy(""); }
+  };
+
   const choose = async (plan) => {
     setBusy(plan.id);
     try { setInvoice(await api("/api/billing/invoice", { method: "POST", body: { plan: plan.id } })); }
@@ -55,6 +64,14 @@ export default function Plans() {
         <div><h1>Plans</h1><p>Paid in SOL, verified on-chain, active for {data?.days ?? 30} days.</p></div>
         <span className="chip acc">CURRENT: {user.plan_name.toUpperCase()}{user.plan !== "free" && user.plan_expires_at ? ` · UNTIL ${toDate(user.plan_expires_at).toLocaleDateString()}` : ""}</span>
       </div>
+
+      {user.trial_available && data?.trial && (
+        <div className="trial">
+          <div><b>Try {data.trial.plan_name} free for {data.trial.days} days.</b>
+            <div className="mute small">No payment and no auto-renewal. Your account returns to Scout when the trial ends.</div></div>
+          <button className="btn primary" disabled={busy === "trial"} onClick={startTrial}>{busy === "trial" ? "Starting..." : `Start ${data.trial.days}-day free trial`}</button>
+        </div>
+      )}
 
       <div className="plans">
         {(data?.plans || []).map((p) => {
